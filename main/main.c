@@ -30,7 +30,7 @@ void IRAM_ATTR timer_group0_isr(void *para)
 {
     TIMERG0.int_clr_timers.t1 = 1;
     TIMERG0.hw_timer[TIMER_1].config.alarm_en = TIMER_ALARM_EN;
-    timer_intr = true;
+    fusb_ready = true;
 }
 
 static void IRAM_ATTR gpio_isr_handler(void* arg)
@@ -107,29 +107,31 @@ void app_main()
             }
             else
             {
-                double elapsed;
-                timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_1, &elapsed);
+                timer_start(TIMER_GROUP_0, TIMER_1);
 
-                if (elapsed > 0)
-                {
-                    if (elapsed > 0.9f)
-                    {
-                        /* A value of 1 indicates that a timer has expired
-                         * or is about to expire and needs further processing.
-                         */
-                        fusb_ready = true;
-                    }
-                    else
-                    {
-                        timer_start(TIMER_GROUP_0, TIMER_1);
-                    }
-                }
-                else
-                {
-                    /* Optional: Disable system timer(s) here to save power
-                     * if needed while in Idle mode.
-                     */
-                }
+                // double elapsed;
+                // timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_1, &elapsed);
+
+                // if (elapsed > 0)
+                // {
+                //     if (elapsed > 0.9f)
+                //     {
+                //         /* A value of 1 indicates that a timer has expired
+                //          * or is about to expire and needs further processing.
+                //          */
+                //         fusb_ready = true;
+                //     }
+                //     else
+                //     {
+                //         timer_start(TIMER_GROUP_0, TIMER_1);
+                //     }
+                // }
+                // else
+                // {
+                //     /* Optional: Disable system timer(s) here to save power
+                //      * if needed while in Idle mode.
+                //      */
+                // }
             }
 
             printf("CC state: %d\r\n", core_get_cc_orientation(&ports[0]));
