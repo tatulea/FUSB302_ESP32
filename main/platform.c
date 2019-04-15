@@ -64,7 +64,7 @@ void platform_set_vbus_discharge(FSC_U8 port, FSC_BOOL enable)
 FSC_BOOL platform_get_device_irq_state(FSC_U8 port)
 {
     /* Return the state of the device interrupt signal. */
-    return (gpio_get_level(35) == 0) ? TRUE: FALSE;
+    return (gpio_get_level(22) == 0) ? TRUE: FALSE;
 }
 
 FSC_BOOL platform_i2c_write(FSC_U8 SlaveAddress,
@@ -165,7 +165,7 @@ FSC_U16 platform_get_pps_current(FSC_U8 port)
 
 FSC_U32 platform_get_system_time(void)
 {
-    return 0;
+    return esp_timer_get_time() / 1000;
 }
 
 FSC_U32 platform_get_log_time(void)

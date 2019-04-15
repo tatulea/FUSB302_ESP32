@@ -13,7 +13,7 @@
 #include "Port.h"
 
 #define DELAY(__attr__)         vTaskDelay(__attr__ / portTICK_PERIOD_MS);
-
+#define INT_PIN     22
 
 static DevicePolicyPtr_t dpm;
 static Port_t ports[1]; 
@@ -35,7 +35,7 @@ void IRAM_ATTR timer_group0_isr(void *para)
 
 static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
-    if((uint32_t) arg == 35)
+    if((uint32_t) arg == INT_PIN)
         fusb_ready = true;
 }
 
@@ -75,13 +75,14 @@ void app_main()
     ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_config));
     ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0));
 
-    gpio_set_direction(35, GPIO_MODE_INPUT);
-    gpio_set_intr_type(35, GPIO_INTR_NEGEDGE);
+    gpio_set_direction(INT_PIN, GPIO_MODE_INPUT);
+    gpio_set_intr_type(INT_PIN, GPIO_INTR_NEGEDGE);
+    gpio_set_pull_mode(INT_PIN, GPIO_PULLUP_ONLY);
 
     // Install gpio ISR
     gpio_install_isr_service(0);
     // Hook isr handler for specific gpio pin
-    gpio_isr_handler_add(35, gpio_isr_handler, (void*) 35);
+    gpio_isr_handler_add(INT_PIN, gpio_isr_handler, (void*) INT_PIN);
 
 
     DPM_Init(&dpm);
@@ -91,47 +92,25 @@ void app_main()
     core_initialize(&ports[0], 0x22);
 
     DPM_AddPort(dpm, &ports[0]);
+    timer_pause(TIMER_GROUP_0, TIMER_1);
 
     while(1)
     {
         if (fusb_ready == true)
         {
-            timer_pause(TIMER_GROUP_0, TIMER_1);
-            core_state_machine(&ports[0]);
-
             fusb_ready = false;
-            
-            if(gpio_get_level(35) == 0)
+
+            uint64_t start = esp_timer_get_time();
+            while(esp_timer_get_time() - start < 1000000)
             {
-                fusb_ready = true;
+                core_state_machine(&ports[0]);
+                DELAY(100);
             }
-            else
+            
+            if(gpio_get_level(INT_PIN) == 0 || fusb_ready)
             {
-                timer_start(TIMER_GROUP_0, TIMER_1);
-
-                // double elapsed;
-                // timer_get_counter_time_sec(TIMER_GROUP_0, TIMER_1, &elapsed);
-
-                // if (elapsed > 0)
-                // {
-                //     if (elapsed > 0.9f)
-                //     {
-                //         /* A value of 1 indicates that a timer has expired
-                //          * or is about to expire and needs further processing.
-                //          */
-                //         fusb_ready = true;
-                //     }
-                //     else
-                //     {
-                //         timer_start(TIMER_GROUP_0, TIMER_1);
-                //     }
-                // }
-                // else
-                // {
-                //     /* Optional: Disable system timer(s) here to save power
-                //      * if needed while in Idle mode.
-                //      */
-                // }
+                core_state_machine(&ports[0]);
+                fusb_ready = false;
             }
 
             printf("CC state: %d\r\n", core_get_cc_orientation(&ports[0]));
