@@ -13,25 +13,18 @@
 #include "Port.h"
 
 #include "esp_timer.h"
-
-#define DELAY(__attr__)         vTaskDelay(__attr__ / portTICK_PERIOD_MS);
-#define INT_PIN     12
+#include "defines.h"
 
 static DevicePolicyPtr_t dpm;
 static Port_t ports[1]; 
 
-
 volatile bool fusb_ready = false;
-#define TIMER_DIVIDER         16
-#define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)
-#define TIMER_INTERVAL1_SEC   1
+esp_timer_handle_t fusb_timer;
 
-volatile bool timer_intr = false;
 
-static void IRAM_ATTR gpio_isr_handler(void* arg)
+static void IRAM_ATTR fusb_isr_handler(void* arg)
 {
-    if((uint32_t) arg == INT_PIN)
-        fusb_ready = true;
+    fusb_ready = true;
 }
 
 static void oneshot_timer_callback(void* arg)
@@ -39,54 +32,59 @@ static void oneshot_timer_callback(void* arg)
     fusb_ready = true;
 }
 
+
 void app_main()
 {
     i2c_config_t i2c_config = {
         .mode=I2C_MODE_MASTER,
-        .sda_io_num=27,
-        .scl_io_num=14,
+        .sda_io_num=I2C_SDA,
+        .scl_io_num=I2C_SCL,
         .sda_pullup_en=GPIO_PULLUP_ENABLE,
         .scl_pullup_en=GPIO_PULLUP_ENABLE,
-        .master.clk_speed=1000000
+        .master.clk_speed=400000
     };
     ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_config));
     ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0));
 
-    gpio_set_direction(INT_PIN, GPIO_MODE_INPUT);
-    gpio_set_intr_type(INT_PIN, GPIO_INTR_NEGEDGE);
-    gpio_set_pull_mode(INT_PIN, GPIO_PULLUP_ONLY);
+    gpio_set_direction(FUSB_INT, GPIO_MODE_INPUT);
+    gpio_set_intr_type(FUSB_INT, GPIO_INTR_NEGEDGE);
+    gpio_set_pull_mode(FUSB_INT, GPIO_PULLUP_ONLY);
 
     // Install gpio ISR
     gpio_install_isr_service(0);
     // Hook isr handler for specific gpio pin
-    gpio_isr_handler_add(INT_PIN, gpio_isr_handler, (void*) INT_PIN);
+    gpio_isr_handler_add(FUSB_INT, fusb_isr_handler, (void*) FUSB_INT);
 
     DPM_Init(&dpm);
 
     ports[0].dpm = dpm;
     ports[0].PortID = 0;
-    core_initialize(&ports[0], 0x22);
+    core_initialize(&ports[0], FUSB_ADDR);
 
     DPM_AddPort(dpm, &ports[0]);
 
-    const esp_timer_create_args_t oneshot_timer_args = {
+    const esp_timer_create_args_t fusb_timer_args = {
         .callback = &oneshot_timer_callback,
-        .name = "one-shot"
+        .name = "fusb-timer"
     };
-    esp_timer_handle_t oneshot_timer;
-    ESP_ERROR_CHECK(esp_timer_create(&oneshot_timer_args, &oneshot_timer));
+    ESP_ERROR_CHECK(esp_timer_create(&fusb_timer_args, &fusb_timer));
 
     while(1)
     {
         if (fusb_ready)
         {
-            esp_timer_stop(oneshot_timer);
-            // esp_timer_delete(oneshot_timer);
+            esp_timer_stop(fusb_timer);
             core_state_machine(&ports[0]);
 
             fusb_ready = false;
 
-            if(gpio_get_level(INT_PIN) == 0)
+            /*
+             * It is possible for the state machine to go into idle mode with
+             * the interrupt pin still low and as a result the edge-sensitive
+             * IRQ won't get triggered.  Check here before returning to wait
+             * on the IRQ.
+             */
+            if(platform_get_device_irq_state(ports[0].PortID))
             {
                 fusb_ready = true;
             }
@@ -94,7 +92,7 @@ void app_main()
             {
                 /* If needed, enable timer interrupt before idling */
                 uint32_t timer_value = core_get_next_timeout(&ports[0]);
-                printf("Timer value: %d\r\n", timer_value);
+
                 if (timer_value > 0)
                 {
                     if (timer_value == 1)
@@ -106,48 +104,20 @@ void app_main()
                     }
                     else
                     {
-                        // ESP_ERROR_CHECK(esp_timer_create(&oneshot_timer_args, &oneshot_timer));
-                        ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, timer_value));
+                        /* A non-zero time requires a future timer interrupt */
+                        ESP_ERROR_CHECK(esp_timer_start_once(fusb_timer, timer_value));
                     }
                 }
                 else
                 {
                     /* Optional: Disable system timer(s) here to save power
-                     * if needed while in Idle mode.
+                     * while in Idle mode.
+                     *
+                     * Note: this is the place that gets called when the FUSB
+                     * finished the process for an interrupt. Here you will know
+                     * for sure that you have the final state of USB
                      */
-                }
-            }
-
-            printf("CC state: %d\r\n", ports[0].CCPin);
-            switch (ports[0].ConnState)
-            {
-                case Unattached:
-                {
-                    printf("The cable is unattached\r\n");
-                    break;
-                }
-                case AttachedSink:
-                {
-                    printf("Source in sink state\r\n");
-                    break;
-                }
-                case AttachedSource:
-                {
-                    printf("Host in attached source state\r\n");
-                    break;
-                }
-                case AttachWaitSource:
-                {
-                    printf("Host in attach wait source state\r\n");
-                    break;
-                }
-                default:
-                {
-                    printf("The state is not recognized. Value %d\r\n", ports[0].ConnState);
-                    printf("CC state: %d\r\n", ports[0].CCPin);
-                    printf("CC TermType: %d\r\n", ports[0].CCTerm);
-                    printf("SRC/SNK: %d\r\n", ports[0].sourceOrSink);
-                    break;
+                    printf("FUSB process done. You can query the state here\r\n");
                 }
             }
         }

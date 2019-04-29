@@ -6,6 +6,8 @@
 
 #include "freertos/task.h"
 
+#include "defines.h"
+
 void platform_set_vbus_lvl_enable(FSC_U8 port,
                                   VBUS_LVL level,
                                   FSC_BOOL enable,
@@ -64,7 +66,7 @@ void platform_set_vbus_discharge(FSC_U8 port, FSC_BOOL enable)
 FSC_BOOL platform_get_device_irq_state(FSC_U8 port)
 {
     /* Return the state of the device interrupt signal. */
-    return (gpio_get_level(12) == 0) ? TRUE: FALSE;
+    return (gpio_get_level(FUSB_INT) == 0) ? TRUE: FALSE;
 }
 
 FSC_BOOL platform_i2c_write(FSC_U8 SlaveAddress,
@@ -84,7 +86,6 @@ FSC_BOOL platform_i2c_write(FSC_U8 SlaveAddress,
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, (SlaveAddress << 1) | I2C_MASTER_WRITE, true);
     i2c_master_write_byte(cmd, RegisterAddress, true);
-    // i2c_master_write_byte(cmd, value, true);
     i2c_master_write(cmd, Data, DataLength, true);
     i2c_master_stop(cmd);
 
@@ -165,7 +166,7 @@ FSC_U16 platform_get_pps_current(FSC_U8 port)
 
 FSC_U32 platform_get_system_time(void)
 {
-    return esp_timer_get_time() / 1000;
+    return esp_timer_get_time();
 }
 
 FSC_U32 platform_get_log_time(void)

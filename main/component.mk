@@ -10,6 +10,4 @@ COMPONENT_SRCDIRS := . core core/modules core/vdm
 CFLAGS += -DPLATFORM_NONE \
 			-DFSC_HAVE_SRC \
 			-DFSC_HAVE_DRP \
-			-DFSC_HAVE_SNK \
-			-DFSC_HAVE_ACCMODE \
-			-DFSC_HAVE_VDM
+			-DFSC_HAVE_SNK
