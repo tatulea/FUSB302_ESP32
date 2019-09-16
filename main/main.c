@@ -45,6 +45,7 @@ void app_main()
     };
     ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_config));
     ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0));
+    i2c_set_timeout(I2C_NUM_0, 400000);
 
     gpio_set_direction(FUSB_INT, GPIO_MODE_INPUT);
     gpio_set_intr_type(FUSB_INT, GPIO_INTR_NEGEDGE);
@@ -69,10 +70,13 @@ void app_main()
     };
     ESP_ERROR_CHECK(esp_timer_create(&fusb_timer_args, &fusb_timer));
 
+    DELAY(2000);
+    
     while(1)
     {
         if (fusb_ready)
         {
+            printf("Got an interrupt\r\n");
             esp_timer_stop(fusb_timer);
             core_state_machine(&ports[0]);
 
@@ -95,16 +99,19 @@ void app_main()
 
                 if (timer_value > 0)
                 {
+                    printf("Timer is bigger than 0\r\n");
                     if (timer_value == 1)
                     {
                         /* A value of 1 indicates that a timer has expired
                          * or is about to expire and needs further processing.
                          */
+                        printf("Timer got an interrupt\r\n");
                         fusb_ready = true;
                     }
                     else
                     {
                         /* A non-zero time requires a future timer interrupt */
+                        printf("Timer reset\r\n");
                         ESP_ERROR_CHECK(esp_timer_start_once(fusb_timer, timer_value));
                     }
                 }

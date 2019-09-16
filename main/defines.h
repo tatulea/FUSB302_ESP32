@@ -8,4 +8,4 @@
 #define I2C_SCL     14
 #define I2C_SDA     27
 #define FUSB_INT    12
-#define FUSB_ADDR   0x22
+#define FUSB_ADDR   0x25
